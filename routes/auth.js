@@ -1,92 +1,69 @@
-const express = require('express');
-const bcrypt = require('bcrypt');
-const router = express.Router();
-const User = require('../models/User');
+const User = require("../models/User");
+const bcrypt = require("bcrypt");
 const bcryptSalt = 10;
+const path = require('path');
+const passport = require('passport');
+const debug = require('debug')("app:auth:local");
 
-// SIGNUP: Print form
-router.get('/signup', (req, res) => {
-  res.render('auth/signup', {
-    title: 'Signup'
-  });
+const router = require('express').Router();
+
+router.get("/signup", (req, res, next) => {
+  res.render("auth/signup");
 });
 
-// SIGNUP: Create user in db
-router.post('/signup', function(req, res, next) {
+router.post("/signup", (req, res, next) => {
   const username = req.body.username;
   const password = req.body.password;
 
   if (username === "" || password === "") {
-    res.render("auth/signup", {
-      errorMessage: "Indicate a username and a password to sign up"
-    });
+    res.render("auth/signup", { message: "Indicate username and password" });
     return;
   }
 
-  User.findOne({ "username": username }).then(user =>{
-    if(user){
-      res.render("auth/signup", {
-        errorMessage: "User already exists"
-      });
+  User.findOne({ username }, "username", (err, user) => {
+    if (user !== null) {
+      res.render("auth/signup", { message: "The username already exists" });
       return;
     }
+
     const salt = bcrypt.genSaltSync(bcryptSalt);
     const hashPass = bcrypt.hashSync(password, salt);
-    new User({
-        username: username,
-        password: hashPass
-      })
-      .save()
-      .then(() => res.redirect('/'))
-      .catch(e => next(e));
-  });
 
-});
+    debug("User created");
 
+    const newUser = new User({
+      username,
+      password: hashPass
+    })
+    .save()
+    .then(user => res.redirect('/'))
+    .catch(e => res.render("auth/signup", { message: "Something went wrong" }));
 
-// LOGIN: Print form
-router.get('/login', (req, res) => {
-  res.render('auth/login', {
-    title: 'Login Here!'
   });
 });
 
-router.post("/login", (req, res, next) => {
-  var username = req.body.username;
-  var password = req.body.password;
 
-  if (username === "" || password === "") {
-    res.render("auth/login", {
-      errorMessage: "Indicate a username and a password to sign up"
-    });
-    return;
-  }
-
-  User.findOne({ "username": username }, (err, user) => {
-      if (err || !user) {
-        res.render("auth/login", {
-          errorMessage: "The username doesn't exist"
-        });
-        return;
-      }
-      if (bcrypt.compareSync(password, user.password)) {
-        // Save the login in the session!
-        req.session.currentUser = user;
-        res.redirect("/");
-      } else {
-        res.render("auth/login", {
-          errorMessage: "Incorrect password"
-        });
-      }
-  });
+router.get('/login',(req,res) =>{
+  res.render('auth/login',{ message: req.flash("error") });
 });
 
-// LOGOUT
-router.get("/logout", (req, res, next) => {
-  req.session.destroy((err) => {
-    // cannot access session here
-    res.redirect("/login");
-  });
+router.post("/login", passport.authenticate("local", {
+  successRedirect: "/",
+  failureRedirect: "/login",
+  failureFlash: true,
+  passReqToCallback: true
+}));
+
+router.post('/logout',(req,res) =>{
+  req.logout();
+  res.redirect("/");
 });
+
+
+router.get("/auth/facebook", passport.authenticate("facebook"));
+router.get("/auth/facebook/callback", passport.authenticate("facebook", {
+  successRedirect: "/",
+  failureRedirect: "/"
+}));
 
 module.exports = router;
